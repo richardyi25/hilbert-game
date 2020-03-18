@@ -1,0 +1,137 @@
+body{
+	background-color: #FFFFF7;
+}
+
+#outer{
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	box-sizing: border-box;
+}
+
+#header{
+	position: absolute;
+	width: 100%;
+	height: 10%;
+	box-sizing: border-box;
+	font-family: Verdana, Sans;
+	font-size: 5.5vh;
+	background-color: #E8DDCC;
+}
+
+#head-inner{
+	position: absolute;
+	width: 96%;
+	height: 80%;
+	top: 10%;
+	left: 2%;
+	box-sizing: border-box;
+	display: table;
+}
+
+.head-item{
+	vertical-align: middle;
+	display: table-cell;
+}
+
+#main{
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	width: 100%;
+	height: 90%;
+	box-sizing: border-box;
+}
+
+#edit{
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 10%;
+	box-sizing: border-box;
+}
+
+/*
+#thms{
+	position: absolute;
+	right: 0;
+	top: 0;
+	width: 50%;
+	height: 50%;
+	box-sizing: border-box;
+}
+*/
+
+#apply{
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	width: 50%;
+	height: 50%;
+	box-sizing: border-box;
+}
+
+/*
+#outer *{
+	background-color: rgba(0, 0, 0, 0.3);
+	border: 5px solid rgba(255, 0, 0, 0.3);
+}
+*/
+
+#input{ /* textarea */
+	border: 1px solid black;
+	width: 99%;
+	box-sizing: border-box;
+	resize: none;
+	font-size: 5vh;
+	overflow: hidden;
+	font-family: Courier New, Monospace;
+}
+
+#input-wrapper2{
+	display: table-cell;
+	vertical-align: middle;
+}
+
+#gt-wrapper{
+	height: 100%;
+	width: 4.5%;
+	text-align: right;
+	display: table;
+	position: absolute;
+	left: 0px;
+	top: 0px;
+}
+
+#gt{
+	display: table-cell;
+	vertical-align: middle;
+	font-family: Courier New, Monospace;
+	font-size: 2vw;
+	width: 2vw;
+}
+
+#input-wrapper{
+	height: 100%;
+	position: absolute;
+	right: 0px;
+	top: 0px;
+	width: 95%;
+	display: table;
+}
+
+.thm-name{
+}
+
+.thm-body{
+	position: absolute;
+	left: 5%;
+}
+
+.thm-body{
+	white-space: nowrap;
+	overflow-x: auto;
+}
