@@ -1,5 +1,5 @@
 function cssDebug(){
-	$("#outer *").css({backgroundColor: "rgba(0, 0, 0, 0.3)", border: "1px solid black"});
+	$("#outer *").css({backgroundColor: "rgba(0, 0, 0, 0.3)", border: "1px solid black", boxSizing: "border-box"});
 }
 
 print = console.log;

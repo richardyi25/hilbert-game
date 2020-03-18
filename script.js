@@ -182,10 +182,12 @@ function render(){
 		);
 	}
 
+	/*
 	if(mode == "apply"){
-		//var s1 = "<div class
+		var s1 = "<div class
 		$("#apply").html
 	}
+	*/
 }
 
 function parse(e){
