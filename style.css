@@ -134,6 +134,8 @@ body *{
 #error-wrapper{
 	display: flex;
 	align-items: center;
+	padding-left: 1.5vh;
+	padding-top: 0.8vh;
 	box-sizing: border-box;
 	position: absolute;
 	top: 0%;
