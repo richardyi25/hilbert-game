@@ -1,4 +1,3 @@
-// TODO switch to objects?
 var theorems = [
 	["S", [["a", "b", "c"], [["a", "b"], ["a", "c"]]], ["a", "b", "c"]],
 	["K", ["a", ["b", "a"]], ["a", "b"]]
@@ -8,7 +7,6 @@ var thm1, thm2, thm3; // Working theorems (like registers)
 var sub1 = {}, sub2 = {};
 
 /*
-TODO Document grammar in another page
 Modes:
 Normal mode   - Waiting for Apply, Delete, Rename, Specific
 Apply mode    - Waiting for Sub, Done, Quit
@@ -95,6 +93,14 @@ function checkVar(varlist, varname){
 
 	error("Variable " + varname + " not found");
 	return false;
+}
+
+function checkEmpty(rest){
+	if(rest.length == 0){
+		error("Unexpected end of line");
+		return false;
+	}
+	return true;
 }
 
 function checkEOL(rest){
@@ -285,7 +291,6 @@ function cmpThm(thm1, thm2){
 }
 
 function render(){
-	// TODO don't write HTML in rendering, use proper functions to construct
 	// tags instead
 	$("#mode").text(mode[0].toUpperCase() + mode.substr(1, mode.length) + " Mode");
 	$("#thms").empty();
@@ -298,56 +303,46 @@ function render(){
 		);
 	}
 
-	// TODO make better
 	if(mode == "apply"){
-		var s1 = "<div>" 
 		$("#apply").html("<div>" + stringifyThm(binarizeThm(subThm(thm1[1], sub1))) + "</div><div>" +
 			stringifyThm(binarizeThm(subThm(thm2[1], sub2))) + "</div>");
+	}
+	else if(mode == "specific"){
+		$("#apply").html("<div>" + stringifyThm(binarizeThm(subThm(thm1[1], sub1))) + "</div>");
 	}
 	else $("#apply").empty();
 }
 
-function parse(e){
-	if(e.which != 13) return;
-	$("#error").empty();
-	var line = $("#input").val();
-	if(line == "") return;
-	$("#input").val("");
+function parse(line){
 	var tokens = tokenize(line);
-	var first = tokens[0].toLowerCase();
+	var firstOriginal = tokens[0];
+	var first = firstOriginal.toLowerCase();
 	var rest = tokens.slice(1);
 
 	if(mode == "normal"){
 		if(first == "apply" || first == "a"){
-			if(rest.length == 0){
-				error("Unexpected end of line when looking for first theorem name");
-				return;
-			}
+			if(!checkEmpty(rest)) return;
 			var t1 = rest[0];
 			if(!checkThm(t1)) return;
 			rest = optional(rest.slice(1), "to");
-			if(rest.length == 0){
-				error("Unexpected end of line when looking for second theorem name");
-				return;
-			}
+			if(!checkEmpty(rest)) return;
 			var t2 = rest[0];
 			if(!checkThm(t2)) return;
 			rest = optional(rest.slice(1), "as");
-			if(rest.length == 0){
-				error("Unexpected end of line when looking for new theorem name");
-				return;
-			}
-			if(!checkEOL(rest)) return;
+			if(!checkEmpty(rest)) return;
+			//if(!checkEOL(rest)) return;
 			var t3 = rest[0];
 			if(!checkNewThm(t3)) return;
 			mode = "apply";
 			thm1 = getThm(t1);
 			thm2 = getThm(t2);
 			thm3 = t3;
+			sub1 = {};
+			sub2 = {};
 		}
 		else if(first == "delete" || first == "d"){
 			if(!checkThm(rest[0])) return;
-			if(!checkEOL(rest)) return;
+			//if(!checkEOL(rest)) return;
 			thm1 = rest[0];
 			mode = "confirm";
 		}
@@ -357,22 +352,26 @@ function parse(e){
 			rest = optional(rest.splice(1), "to");
 			var t2 = rest[0];
 			if(!checkNewThm(t2)) return;
-			if(!checkEOL(rest)) return;
+			//if(!checkEOL(rest)) return;
 			thm1 = getThm(t1);
 			thm2 = t2;
+			thm1[0] = t2;
 		}
 		else if(first == "specific" || first == "s"){
 			if(!checkThm(rest[0])) return;
-			if(!checkEOL(rest)) return;
-			mode = "specific";
 			thm1 = getThm(rest[0]);
+			rest = optional(rest.slice(1), "as");
+			if(!checkEmpty(rest)) return;
+			if(!checkNewThm(rest[0])) return;
+			mode = "specific";
+			thm2 = rest[0];
+			sub1 = {};
 		}
 		else{
-			error(first + " is not a command");
+			error(firstOriginal + " is not a command");
 			return;
 		}
 	}
-	// TODO do check EOL here
 	else if(mode == "apply"){
 		if(first == "sub" || first == "s"){
 			rest = optional(rest, "in");
@@ -384,6 +383,7 @@ function parse(e){
 			var thm = id == "1" ? thm1 : thm2;
 			var varname = rest[1];
 			if(!checkVar(thm[2], varname)) return;
+			rest = optional(rest.slice(1), "with");
 			var exp = rest.slice(2).join(" ");
 			var newThm = parseThm(exp);
 			if(!newThm) return;
@@ -412,12 +412,31 @@ function parse(e){
 			mode = "normal";
 		}
 		else{
-			error(first + " is not a command");
+			error(firstOriginal + " is not a command");
 			return;
 		}
 	}
+	else if (mode == "specific"){
+		if(first == "sub" || first == "s"){
+			var varname = rest[0];
+			rest = optional(rest.slice(1), "with");
+			if(!checkVar(thm1[2], varname)) return;
+			var exp = rest.join(" ");
+			var newThm = parseThm(exp);
+			if(!newThm) return;
+			sub1[varname] = newThm;
+		}
+		else if(first == "done" || first == "d"){
+			var t1 = subThm(thm1[1], sub1);
+			theorems.push([thm2, t1, getVars(t1)]);
+			mode = "normal";
+		}
+		else if(first == "quit"){
+			mode = "normal"; // reset variables?
+		}
+	}
 	else if(mode == "confirm"){
-		if(!checkEOL(tokens)) return;
+		//if(!checkEOL(tokens)) return;
 		if(first == "yes" || first == "y"){
 			if(!deleteThm(thm1)) error("Cannot delete axiom");
 			mode = "normal";
@@ -438,7 +457,16 @@ function clear(e){
 
 // Event Binding
 $(document).ready(function(){
-	$("#input").keydown(parse);
+	$("#input").keydown(function(e){
+		if(e.which != 13) return;
+		$("#error").empty();
+		var line = $("#input").val();
+		$("#input").val("");
+		if(line == "") return;
+		parse(line);
+	});
 	$("#input").keyup(clear);
 	render();
+//	parse("Specific S as S2");
+//	parse("Sub c with a");
 });
