@@ -30,6 +30,7 @@ var thm1, thm2, thm3; // Working theorems (like registers)
 
 var sub1 = {}, sub2 = {};
 var log = [];
+var arrowPtr; // What the current command is displaying, changed when arrow keys or enter is pressed
 
 /*
 We judge a function's purity extensionally, that is, if it doesn't modify arguments or produce
@@ -410,20 +411,26 @@ function parse(line, logLines){
 	}
 	else if(mode == "apply"){
 		if(first == "sub" || first == "s"){
+			var t1 = thm1[0], t2 = thm2[0];
+			if(t1 == t2) t2 += "_";
 			rest = optional(rest, "in");
 			var id = rest[0];
-			if(id != "1" && id != "2"){
-				error("Invalid theorem " + id + ". Please enter 1 or 2");
+			if(id != "1" && id != "2" && id != t1 && id != t2){
+				error("Invalid theorem " + id + ". Please enter 1, 2, or a theorem name");
 				return;
 			}
-			var thm = id == "1" ? thm1 : thm2;
+			var thm;
+			if(id == "1" || id == "2") thm = id == "1" ? thm1 : thm2;
+			else thm = id == t1 ? thm1 : thm2;
 			var varname = rest[1];
 			if(!checkVar(thm[2], varname)) return;
 			rest = optional(rest.slice(1), "with");
 			var exp = rest.slice(2).join(" ");
 			var newThm = parseThm(exp);
 			if(!newThm) return;
-			var sub = id == "1" ? sub1 : sub2;
+			var sub;
+			if(id == "1" || id == "2") sub = id == "1" ? sub1 : sub2;
+			else sub = id == t1 ? sub1 : sub2;
 			sub[varname] = newThm;
 		}
 		else if(first == "done" || first == "d"){
@@ -478,7 +485,10 @@ function parse(line, logLines){
 	else if(mode == "confirm"){
 		//if(!checkEOL(tokens)) return;
 		if(first == "yes" || first == "y"){
-			if(!deleteThm(thm1)) error("Cannot delete axiom");
+			if(!deleteThm(thm1)){
+				error("Cannot delete axiom");
+				return;
+			}
 			mode = "normal";
 		}
 		else if(first == "no" || first == "n"){
@@ -486,16 +496,15 @@ function parse(line, logLines){
 		}
 		else{
 			error("Please enter yes/no");
+			return;
 		}
 	}
 	render();
 	if(logLines) log.push(line);
 	saveProgress();
+	return true;
 }
 
-function clear(e){
-	if(e.which == 13) $("#input").val("");
-}
 
 function loadProgress(){
 	// This breaks if there is a cookie called "progress" from other sites on this domain
@@ -510,28 +519,55 @@ function loadProgress(){
 	if(!progress) return;
 	var tmp = progress.split("|");
 	log = Array.from(tmp);
-	for(var i = 0; i < log.length; i++)
-		parse(log[i], false);
+	for(var i = 0; i < log.length; i++){
+		if(!parse(log[i], false))
+			console.log(log[i]);
+	}
+	arrowPtr = log.length;
+}
+
+function loadCommand(){
+	if(arrowPtr >= log.length){
+		arrowPtr = log.length;
+		$("#input").val("");
+		return;
+	}
+	if(arrowPtr < 0){
+		arrowPtr = 0;
+	}
+	$("#input").val(log[arrowPtr]);
 }
 
 // Event Binding
 $(document).ready(function(){
 	$(document).keydown(function(e){
-		//e.preventDefault();
-		if(e.which != 13){
-			$("#input")[0].focus();
+		if(e.which == 13){ // enter
+			arrowPtr = log.length;
+			e.preventDefault();
+			$("#error").empty();
+			var line = $("#input").val();
+			if(line == "") return;
+			if(parse(line, true)){
+				$("#input").val("");
+				$("#input").css("background-color", "");
+			}
+			else{
+				$("#input").css("background-color", "#FFAAAA");
+			}
+			arrowPtr = log.length;
 		}
+		else if(e.which == 38){ // up arrow
+			--arrowPtr;
+			loadCommand();
+		}
+		else if(e.which == 40){ // down arrow
+			++arrowPtr;
+			loadCommand();
+		}
+		else
+			$("#input")[0].focus();
 	});
 
-	$("#input").keydown(function(e){
-		if(e.which != 13) return;
-		$("#error").empty();
-		var line = $("#input").val();
-		$("#input").val("");
-		if(line == "") return;
-		parse(line, true);
-	});
-	$("#input").keyup(clear);
 	render();
 	loadProgress();
 });
