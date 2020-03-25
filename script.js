@@ -1,18 +1,35 @@
+/*
+function Theorem(name, body){
+	this.name = name;
+	this.body = body;
+	this.getVarsHelper = function(thm){
+		var res = {};
+		for(var i = 0; i < thm.length; i++){
+			if(Array.isArray(thm[i])){
+				var get = getVarsHelper(thm[i]);
+				for(var key in get)
+					res[key] = true;
+			}
+			else res[thm[i]] = true;
+		}
+		return res;
+	}
+	this.getVars = function(thm){
+		return Object.keys(getVarsHelper(thm)).sort();
+	}
+	this.vars = this.getVars(body);
+}
+*/
+
 var theorems = [
 	["S", [["a", "b", "c"], [["a", "b"], ["a", "c"]]], ["a", "b", "c"]],
 	["K", ["a", ["b", "a"]], ["a", "b"]]
 ]; // Current list of theorems
 var mode = "normal";
 var thm1, thm2, thm3; // Working theorems (like registers)
-var sub1 = {}, sub2 = {};
 
-/*
-Modes:
-Normal mode   - Waiting for Apply, Delete, Rename, Specific
-Apply mode    - Waiting for Sub, Done, Quit
-Specific mode - Waiting for Sub, Done, Quit
-Confrim mode  - Waiting for yes/no
-*/
+var sub1 = {}, sub2 = {};
+var log = [];
 
 /*
 We judge a function's purity extensionally, that is, if it doesn't modify arguments or produce
@@ -71,6 +88,10 @@ function checkThm(thm){
 }
 
 function checkNewThm(thm){
+	if(thm.length > 32){
+		error("Theorem name too long");
+		return false;
+	}
 	if(findThm(thm)){
 		error("Theorem " + thm + " is already taken");
 		return false;
@@ -243,23 +264,6 @@ function stringifyThm(thm){
 	return result;
 }
 
-function getVarsHelper(thm){
-	var res = {};
-	for(var i = 0; i < thm.length; i++){
-		if(Array.isArray(thm[i])){
-			var get = getVarsHelper(thm[i]);
-			for(var key in get)
-				res[key] = true;
-		}
-		else res[thm[i]] = true;
-	}
-	return res;
-}
-
-function getVars(thm){
-	return Object.keys(getVarsHelper(thm)).sort();
-}
-
 function subHelp(t, sub){
 	var thm = Array.from(t);
 	for(var i = 0; i < thm.length; i++){
@@ -277,7 +281,6 @@ function subThm(thm, sub){
 }
 
 function cmpThm(thm1, thm2){
-	console.log(stringifyThm(thm1) + "   " + stringifyThm(thm2));
 	if(thm1.length != thm2.length) return false;
 	for(var i = 0; i < thm1.length; i++){
 		if(Array.isArray(thm1[i]) && Array.isArray(thm2[i])){
@@ -290,30 +293,63 @@ function cmpThm(thm1, thm2){
 	return true;
 }
 
+function getVarsHelper(thm){
+	var res = {};
+	for(var i = 0; i < thm.length; i++){
+		if(Array.isArray(thm[i])){
+			var get = getVarsHelper(thm[i]);
+			for(var key in get)
+				res[key] = true;
+		}
+		else res[thm[i]] = true;
+	}
+	return res;
+}
+
+function getVars(thm){
+	return Object.keys(getVarsHelper(thm)).sort();
+}
+
+function saveProgress(){
+	document.cookie = "progress=" + log.join("|");
+}
+
+function padRight(str, len){
+	for(var i = str.length; i < len; i++)
+		str += " ";
+	return str;
+}
+
 function render(){
-	// tags instead
 	$("#mode").text(mode[0].toUpperCase() + mode.substr(1, mode.length) + " Mode");
 	$("#thms").empty();
+
+	var maxlen = 0;
+	for(var i = 0; i < theorems.length; i++)
+		maxlen = Math.max(maxlen, theorems[i][0].length);
+
 	for(var i = 0; i < theorems.length; i++){
 		var thm = theorems[i];
-		$("#thms").append("<div class=\"thm\"><span class=\"thm-name\">"
-			+ thm[0]
-			+ ":</span><span class=\"thm-body\">"
-			+ stringifyThm(thm[1]) + "</span></div>"
+		$("#thms").append("<div class=\"thm\">"
+			+ padRight(thm[0] + ":", maxlen + 2) + stringifyThm(binarizeThm(thm[1])) + "</div>"
 		);
 	}
 
 	if(mode == "apply"){
-		$("#apply").html("<div>" + stringifyThm(binarizeThm(subThm(thm1[1], sub1))) + "</div><div>" +
-			stringifyThm(binarizeThm(subThm(thm2[1], sub2))) + "</div>");
+		var t1 = thm1[0], t2 = thm2[0];
+		if(t1 == t2) t2 += "_";
+		maxlen = Math.max(t1.length, t2.length);
+		$("#apply").html("<div class=\"thm\">" + padRight(t1 + ":", maxlen + 2) +
+			stringifyThm(binarizeThm(subThm(thm1[1], sub1))) + "</div><div class = \"thm\">" +
+			padRight(t2 + ":", maxlen + 2) + stringifyThm(binarizeThm(subThm(thm2[1], sub2))) + "</div>");
 	}
 	else if(mode == "specific"){
-		$("#apply").html("<div>" + stringifyThm(binarizeThm(subThm(thm1[1], sub1))) + "</div>");
+		$("#apply").html("<div class=\"thm\">" + thm1[0] + ":  " + stringifyThm(binarizeThm(subThm(thm1[1], sub1))) + "</div>");
 	}
 	else $("#apply").empty();
 }
 
-function parse(line){
+function parse(line, logLines){
 	var tokens = tokenize(line);
 	var firstOriginal = tokens[0];
 	var first = firstOriginal.toLowerCase();
@@ -431,8 +467,12 @@ function parse(line){
 			theorems.push([thm2, t1, getVars(t1)]);
 			mode = "normal";
 		}
-		else if(first == "quit"){
+		else if(first == "quit" || first == "q"){
 			mode = "normal"; // reset variables?
+		}
+		else{
+			error(firstOriginal + " is not a command");
+			return;
 		}
 	}
 	else if(mode == "confirm"){
@@ -449,24 +489,49 @@ function parse(line){
 		}
 	}
 	render();
+	if(logLines) log.push(line);
+	saveProgress();
 }
 
 function clear(e){
 	if(e.which == 13) $("#input").val("");
 }
 
+function loadProgress(){
+	// This breaks if there is a cookie called "progress" from other sites on this domain
+	var cookies = document.cookie.split("; "), progress;
+	for(var i = 0; i < cookies.length; i++){
+		var cookie = cookies[i];
+		if(cookie.indexOf("=") == -1) continue;
+		var tokens = cookie.split("=");
+		if(tokens[0] == "progress") progress = tokens[1];
+	}
+
+	if(!progress) return;
+	var tmp = progress.split("|");
+	log = Array.from(tmp);
+	for(var i = 0; i < log.length; i++)
+		parse(log[i], false);
+}
+
 // Event Binding
 $(document).ready(function(){
+	$(document).keydown(function(e){
+		//e.preventDefault();
+		if(e.which != 13){
+			$("#input")[0].focus();
+		}
+	});
+
 	$("#input").keydown(function(e){
 		if(e.which != 13) return;
 		$("#error").empty();
 		var line = $("#input").val();
 		$("#input").val("");
 		if(line == "") return;
-		parse(line);
+		parse(line, true);
 	});
 	$("#input").keyup(clear);
 	render();
-//	parse("Specific S as S2");
-//	parse("Sub c with a");
+	loadProgress();
 });
