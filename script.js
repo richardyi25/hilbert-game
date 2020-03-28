@@ -1,26 +1,3 @@
-/*
-function Theorem(name, body){
-	this.name = name;
-	this.body = body;
-	this.getVarsHelper = function(thm){
-		var res = {};
-		for(var i = 0; i < thm.length; i++){
-			if(Array.isArray(thm[i])){
-				var get = getVarsHelper(thm[i]);
-				for(var key in get)
-					res[key] = true;
-			}
-			else res[thm[i]] = true;
-		}
-		return res;
-	}
-	this.getVars = function(thm){
-		return Object.keys(getVarsHelper(thm)).sort();
-	}
-	this.vars = this.getVars(body);
-}
-*/
-
 var theorems = [
 	["S", [["a", "b", "c"], [["a", "b"], ["a", "c"]]], ["a", "b", "c"]],
 	["K", ["a", ["b", "a"]], ["a", "b"]]
@@ -31,6 +8,7 @@ var thm1, thm2, thm3; // Working theorems (like registers)
 var sub1 = {}, sub2 = {};
 var log = [];
 var arrowPtr; // What the current command is displaying, changed when arrow keys or enter is pressed
+var displayStyle = "binary";
 
 /*
 We judge a function's purity extensionally, that is, if it doesn't modify arguments or produce
@@ -150,78 +128,115 @@ function optional(arr, token){
 	return arr;
 }
 
-function checkSymbols(thm){
-	for(var i = 0; i < thm.length; i++){
-		var ch = thm[i];
-		if("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789->→() ".indexOf(ch) == -1){
-			error("Invalid character " + thm[i] + " at position " + (i + 1));
+// Ext. Pure, str -> listof token
+// where token ::= "(" | ")" | "→" | variable
+// where variable ::= string of alphanumeric characters
+// Throws an error if an invalid character is found
+function tokenizeThm(str){
+	var res = [], bucket = "", ch;
+	const valid = "abcdefghijklmnopqrstuvwxyz0123456789";
+	str = str.replace(/\n/g, " ").replace(/\r/g, " ").replace(/\t/g, " ").replace(/->/g, "→");
+	for(var i = 0; i < str.length; i++){
+		ch = str[i];
+		code = str.charCodeAt(i);
+		if(ch == "(" || ch == ")" || ch == "→" || ch == " "){
+			if(bucket.length > 0) res.push(bucket);
+			if(ch != " ") res.push(ch);
+			bucket = "";
+		}
+		else if(valid.indexOf(ch.toLowerCase()) >= 0){
+			bucket += ch;
+		}
+		else{
+			error("Invalid character " + ch + " at position " + (i + 1));
 			return false;
 		}
 	}
-	return true;
+	if(bucket.length > 0) res.push(bucket);
+	return res;
 }
 
-function checkBrackets(thm){
-	var balance = 0, flag = true;
-	for(var i = 0; i < thm.length; i++){
-		if(thm[i] == "(") ++balance;
-		if(thm[i] == ")") --balance;
-		if(balance < 0) flag = false;
+// Ext. Pure, listof token -> listof int
+// Throws error if there's an unmatched bracket
+function matchBrackets(tokens){
+	if(!tokens) return false;
+	var res = [], stack = [], token;
+	for(var i = 0; i < tokens.length; i++){
+		token = tokens[i];
+		if(token == "(") stack.push(i);
+		else if(token == ")"){
+			if(stack.length == 0){
+				error("Unmatched right bracket at position " + (i + 1));
+				return false;
+			}
+			var left = stack.pop();
+			res[left] = i;
+		}
 	}
-	if(balance != 0 || !flag){
-		error("Not a valid bracket sequence. Please check your brackets.");
+	if(stack.length != 0){
+		var left = stack.pop();
+		error("Unmatched left bracket at position " + (left + 1));
 		return false;
 	}
-	return true;
+	return res;
 }
 
-function parseHelp(str, thm){
-	var result = [], bucket = "";
-	for(; thm < str.length; thm++){
-		var ch = str[thm];
-		if(ch == "("){
-			var tmp = parseHelp(str, thm + 1);
-			if(!tmp) return false;
-			parsed = tmp[0], newthm = tmp[1];
-
-			bucket = parsed;
-			thm = newthm;
+// Ext. Pure, listof token -> listof int -> AST
+// where AST ::= variable | listof AST
+function parseTokens(tokens, brackets, leftPtr, rightPtr){
+	if(!tokens || !brackets) return false;
+	var res = [], token;
+	if(rightPtr - leftPtr == 1){
+		token = tokens[leftPtr];
+		if(token != "(" && token != ")" && token != "→")
+			return token;
+		else{
+			error("Unexpected singleton at position " + (leftPtr + 1));
+			return false;
 		}
-		else if(ch == ")"){
-			result.push(bucket);
-			return [result, thm];
-		}
-		else if(ch == "→"){
-			if(!bucket) return false;
-			result.push(bucket);
-			bucket = "";
-		}
-		else bucket += ch;
 	}
-	result.push(bucket);
-	return [result, thm];
+	for(var i = leftPtr; i < rightPtr; i++){
+		token = tokens[i];
+		if(token == "("){
+			var right = brackets[i];
+			var inner = parseTokens(tokens, brackets, i + 1, right);
+			if(inner == false) return false;
+			else res.push(inner);
+			i = right;
+		}
+		else if(token == "→"){
+			error("Unexpected → at position " + (i + 1));
+			return false;
+		}
+		else res.push(token);
+
+		if(i != rightPtr - 1 && tokens[i + 1] != "→"){
+			error("Missing arrow at position " + (i + 2));
+			return false;
+		}
+		else i++;
+	}
+	if(tokens[rightPtr - 1] == "→"){
+		error("Unexpected → at position " + (i + 2));
+		return false;
+	}
+	else return res;
 }
 
 function removeNestThm(t){
+	if(!t) return false;
 	var thm = Array.from(t);
-	for(var i = 0; i < thm.length; i++){
-		if(Array.isArray(thm[i])){
+	for(var i = 0; i < thm.length; i++)
+		if(Array.isArray(thm[i]))
 			thm[i] = removeNestThm(thm[i]);
-			if(thm[i].length == 1)
-				thm[i] = thm[i][0];
-		}
-	}
-	return thm;
+	if(thm.length == 1)
+		return thm[0];
+	else return thm;
 }
 
-function parseThm(thm){
-	if(!checkSymbols(thm) || !checkBrackets(thm)) return false;
-	var res = parseHelp(thm.replace(/ /g, "").replace(/->/g, "→"), 0);
-	if(!res){
-		error("Expected variable while parsing");
-		return false;
-	}
-	return removeNestThm(res[0]);
+function parseThm(str){
+	var tokens = tokenizeThm(str);
+	return removeNestThm(parseTokens(tokens, matchBrackets(tokens), 0, tokens.length));
 }
 
 function binarizeThm(t){
@@ -331,21 +346,28 @@ function render(){
 
 	for(var i = 0; i < theorems.length; i++){
 		var thm = theorems[i];
+		var thmStr = stringifyThm(displayStyle == "binary" ? binarizeThm(thm[1]) : flattenThm(thm[1]));
 		$("#thms").append("<div class=\"thm\">"
-			+ padRight(thm[0] + ":", maxlen + 2) + stringifyThm(binarizeThm(thm[1])) + "</div>"
+			+ padRight(thm[0] + ":", maxlen + 2) + thmStr + "</div>"
 		);
 	}
 
 	if(mode == "apply"){
+		var thmStr1 = stringifyThm(displayStyle == "binary" ?
+			binarizeThm(subThm(thm1[1], sub1)) : flattenThm(subThm(thm1[1], sub1)));
+		var thmStr2 = stringifyThm(displayStyle == "binary" ?
+			binarizeThm(subThm(thm2[1], sub2)) : flattenThm(subThm(thm2[1], sub2)));
 		var t1 = thm1[0], t2 = thm2[0];
 		if(t1 == t2) t2 += "_";
 		maxlen = Math.max(t1.length, t2.length);
 		$("#apply").html("<div class=\"thm\">" + padRight(t1 + ":", maxlen + 2) +
-			stringifyThm(binarizeThm(subThm(thm1[1], sub1))) + "</div><div class = \"thm\">" +
-			padRight(t2 + ":", maxlen + 2) + stringifyThm(binarizeThm(subThm(thm2[1], sub2))) + "</div>");
+			thmStr1 + "</div><div class = \"thm\">" +
+			padRight(t2 + ":", maxlen + 2) + thmStr2 + "</div>");
 	}
 	else if(mode == "specific"){
-		$("#apply").html("<div class=\"thm\">" + thm1[0] + ":  " + stringifyThm(binarizeThm(subThm(thm1[1], sub1))) + "</div>");
+		var thmStr1 = stringifyThm(displayStyle == "binary" ?
+			binarizeThm(subThm(thm1[1], sub1)) : flattenThm(subThm(thm1[1], sub1)));
+		$("#apply").html("<div class=\"thm\">" + thm1[0] + ":  " + thmStr1 + "</div>");
 	}
 	else $("#apply").empty();
 }
@@ -404,6 +426,13 @@ function parse(line, logLines){
 			thm2 = rest[0];
 			sub1 = {};
 		}
+		else if(first == "toggle" || first == "t"){
+			if(displayStyle == "binary")
+				displayStyle = "flat";
+			else
+				displayStyle = "binary";
+			// Syntax is T[oggle] [display]
+		}
 		else{
 			error(firstOriginal + " is not a command");
 			return;
@@ -424,9 +453,10 @@ function parse(line, logLines){
 			else thm = id == t1 ? thm1 : thm2;
 			var varname = rest[1];
 			if(!checkVar(thm[2], varname)) return;
-			rest = optional(rest.slice(1), "with");
-			var exp = rest.slice(2).join(" ");
+			rest = optional(rest.slice(2), "with");
+			var exp = rest.join(" ");
 			var newThm = parseThm(exp);
+			console.log(newThm);
 			if(!newThm) return;
 			var sub;
 			if(id == "1" || id == "2") sub = id == "1" ? sub1 : sub2;
@@ -454,6 +484,13 @@ function parse(line, logLines){
 		else if(first == "quit" || first == "q"){
 			mode = "normal";
 		}
+		else if(first == "toggle" || first == "t"){
+			if(displayStyle == "binary")
+				displayStyle = "flat";
+			else
+				displayStyle = "binary";
+			// Syntax is T[oggle] [display]
+		}
 		else{
 			error(firstOriginal + " is not a command");
 			return;
@@ -477,6 +514,13 @@ function parse(line, logLines){
 		else if(first == "quit" || first == "q"){
 			mode = "normal"; // reset variables?
 		}
+		else if(first == "toggle" || first == "t"){
+			if(displayStyle == "binary")
+				displayStyle = "flat";
+			else
+				displayStyle = "binary";
+			// Syntax is T[oggle] [display]
+		}
 		else{
 			error(firstOriginal + " is not a command");
 			return;
@@ -487,6 +531,7 @@ function parse(line, logLines){
 		if(first == "yes" || first == "y"){
 			if(!deleteThm(thm1)){
 				error("Cannot delete axiom");
+				mode = "normal";
 				return;
 			}
 			mode = "normal";
@@ -521,7 +566,7 @@ function loadProgress(){
 	log = Array.from(tmp);
 	for(var i = 0; i < log.length; i++){
 		if(!parse(log[i], false))
-			console.log(log[i]);
+			console.log("Parse error on load: " + log[i]);
 	}
 	arrowPtr = log.length;
 }
@@ -535,7 +580,10 @@ function loadCommand(){
 	if(arrowPtr < 0){
 		arrowPtr = 0;
 	}
-	$("#input").val(log[arrowPtr]);
+	if(log.length > 0){
+		$("#input").val(log[arrowPtr]);
+		$("#input").prop("selectionEnd", log[arrowPtr].length);
+	}
 }
 
 // Event Binding
@@ -546,7 +594,10 @@ $(document).ready(function(){
 			e.preventDefault();
 			$("#error").empty();
 			var line = $("#input").val();
-			if(line == "") return;
+			if(line == ""){
+				$("#input").css("background-color", "");
+				return;
+			}
 			if(parse(line, true)){
 				$("#input").val("");
 				$("#input").css("background-color", "");
@@ -557,17 +608,21 @@ $(document).ready(function(){
 			arrowPtr = log.length;
 		}
 		else if(e.which == 38){ // up arrow
+			e.preventDefault();
 			--arrowPtr;
 			loadCommand();
 		}
 		else if(e.which == 40){ // down arrow
+			e.preventDefault();
 			++arrowPtr;
 			loadCommand();
 		}
-		else
+		else if(e.which == 73){ // i key
+			if(!$("#input").is(":focus")) e.preventDefault();
 			$("#input")[0].focus();
+		}
 	});
 
-	render();
 	loadProgress();
+	render();
 });
